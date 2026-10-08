@@ -95,11 +95,14 @@ def parse_b(text):
             rno = int(rm.group(1).translate(Z2H))
             boats = {}
             for line in rm.group(4).splitlines():
-                bm = re.match(r"([1-6]) (\d{4})(.{4})(\d\d)(.{2})(\d\d)(A1|A2|B1|B2)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
-                              r"\s+(\d+)\s+([\d.]+)", line)
+                bm = re.match(r"([1-6]) (\d{4})(.{4})(\d\d)(.{2})(\d\d)(A1|A2|B1|B2)\s*(\d+\.\d\d)\s*(\d+\.\d\d)"
+                              r"\s*(\d+\.\d\d)\s*(\d+\.\d\d)\s*(\d{1,3}?)\s*(\d{1,3}\.\d\d)", line)
                 if bm:
-                    boats[int(bm.group(1))] = {"級別": bm.group(7), "全国勝率": float(bm.group(8)),
-                                               "当地勝率": float(bm.group(10)), "モーター2率": float(bm.group(13))}
+                    try:
+                        boats[int(bm.group(1))] = {"級別": bm.group(7), "全国勝率": float(bm.group(8)),
+                                                   "当地勝率": float(bm.group(10)), "モーター2率": float(bm.group(13))}
+                    except ValueError:
+                        pass
             out[(jcd, rno)] = {"締切": rm.group(3).translate(Z2H), "艇": boats}
     return out
 
@@ -254,7 +257,17 @@ def main(argv):
         ymd, ym = d.strftime("%y%m%d"), d.strftime("%Y%m")
         k = lzh_text(fetch(f"https://www1.mbrace.or.jp/od2/K/{ym}/k{ymd}.lzh", f"{cache}/k{ymd}.lzh"))
         b = lzh_text(fetch(f"https://www1.mbrace.or.jp/od2/B/{ym}/b{ymd}.lzh", f"{cache}/b{ymd}.lzh"))
-        return d, (parse_k(k) if k else []), (parse_b(b) if b else {})
+        try:
+            races = parse_k(k) if k else []
+        except Exception as e:
+            print(f"K解析エラー {d}: {e}", file=sys.stderr)
+            races = []
+        try:
+            prog = parse_b(b) if b else {}
+        except Exception as e:
+            print(f"B解析エラー {d}: {e}", file=sys.stderr)
+            prog = {}
+        return d, races, prog
 
     groups = {name: Agg() for name in
               ["全体", "グレード", "大会種別", "レース種別", "グレード×レース種別", "1号艇の級別", "1号艇級別×相手最上位",
