@@ -6,6 +6,7 @@
   - 直前情報 : 展示タイム、チルト、部品交換、調整重量、スタート展示、気象
   - オッズ   : 3連単（全120通り）。人気順の上位を表示
   - 選手ページ: コース別の進入率、1着率・2着率・3着率、平均ST
+  - 当日結果 : その場の、このレースより前の全レースの着順・進入・決まり手・3連単配当と、その日の傾向
 
 使い方:
   python3 official.py <場番号 1-24> <レース番号 1-12> [YYYYMMDD] [--odds-top N] [--json]
@@ -148,6 +149,51 @@ def parse_course(page):
             "平均ST": by_course(section("コース別平均スタートタイミング"))}
 
 
+def parse_result(page):
+    """レース結果ページから、着順・進入（コース順の枠）・ST・決まり手・3連単を取る。"""
+    r = {"着順": [], "進入": [], "ST": {}, "決まり手": "-", "3連単": "-", "3連単配当": "-", "3連単人気": "-"}
+    for tb in re.findall(r"<table[^>]*>(.*?)</table>", page, re.S):
+        t = tokens(tb)
+        if t[:2] == ["着", "枠"]:
+            body = t[4:]
+            for i, x in enumerate(body):
+                if re.fullmatch(r"[１２３４５６]", x) and i + 1 < len(body):
+                    r["着順"].append(int(body[i + 1]))
+        elif t and t[0] == "スタート情報":
+            body = t[1:]
+            for i in range(0, len(body) - 1, 2):
+                waku, st = body[i], body[i + 1]
+                r["進入"].append(int(waku))
+                r["ST"][int(waku)] = st.split()[0]
+        elif t and t[0] == "決まり手" and len(t) > 1:
+            r["決まり手"] = t[1]
+        elif t[:2] == ["勝式", "組番"] and "3連単" in t:
+            i = t.index("3連単")
+            r["3連単"] = "".join(t[i + 1:i + 6])
+            r["3連単配当"] = t[i + 6]
+            r["3連単人気"] = t[i + 7] if i + 7 < len(t) else "-"
+    return r
+
+
+def day_summary(results):
+    done = [x for x in results if x["着順"]]
+    n = len(done)
+    if not n:
+        return {"レース数": 0}
+    win_course = []
+    for x in done:
+        w = x["着順"][0]
+        win_course.append(x["進入"].index(w) + 1 if w in x["進入"] else None)
+    kimarite = {}
+    for x in done:
+        kimarite[x["決まり手"]] = kimarite.get(x["決まり手"], 0) + 1
+    pays = [int(re.sub(r"[^\d]", "", x["3連単配当"])) for x in done if re.search(r"\d", x["3連単配当"])]
+    return {"レース数": n, "1コース1着": win_course.count(1),
+            "枠なり以外": sum(1 for x in done if x["進入"] and x["進入"] != sorted(x["進入"])),
+            "決まり手": kimarite, "万舟": sum(1 for p in pays if p >= 10000),
+            "3連単平均配当": round(sum(pays) / len(pays)) if pays else "-"}
+
+
 def collect(jcd, rno, hd, odds_top=15):
     q = f"rno={rno}&jcd={jcd:02d}&hd={hd}"
     with ThreadPoolExecutor(4) as ex:
@@ -160,9 +206,12 @@ def collect(jcd, rno, hd, odds_top=15):
         before = parse_beforeinfo(f_before.result())
         odds = parse_odds3t(f_odds.result())
         course = {k: parse_course(v.result()) for k, v in courses.items()}
+        earlier = [ex.submit(fetch, f"{BASE}/race/raceresult?rno={r}&jcd={jcd:02d}&hd={hd}") for r in range(1, rno)]
+        results = [dict(parse_result(f.result()), R=i + 1) for i, f in enumerate(earlier)]
     ranked = sorted(((k, float(v)) for k, v in odds.items() if re.fullmatch(r"[\d.]+", v)), key=lambda x: x[1])
     return {"場": PLACES[jcd - 1], "R": rno, "日付": hd, "出走表": racelist, "直前情報": before,
-            "コース別成績": course, "3連単オッズ": odds, "人気上位": ranked[:odds_top]}
+            "コース別成績": course, "3連単オッズ": odds, "人気上位": ranked[:odds_top],
+            "当日結果": results, "当日傾向": day_summary(results)}
 
 
 def render(d):
@@ -203,6 +252,21 @@ def render(d):
     w = bf["気象"]
     out.append(f"\n気象（{w['時点']}）：気温{w['気温']} {w['天気']} 風速{w['風速']}（風向コード{w['風向コード']}） "
                f"水温{w['水温']} 波高{w['波高']}")
+    out.append("\n## 当日のこれまでのレース（この場）")
+    sm = d["当日傾向"]
+    if sm.get("レース数"):
+        km = "、".join(f"{k} {v}" for k, v in sm["決まり手"].items())
+        out.append(f"- {sm['レース数']}レース中、1コース1着 **{sm['1コース1着']}回**、枠なり以外の進入 {sm['枠なり以外']}回、"
+                   f"万舟 {sm['万舟']}回、3連単平均配当 {sm['3連単平均配当']}円")
+        out.append(f"- 決まり手：{km}")
+        out.append("\n| R | 着順（枠） | 進入（内から枠） | 決まり手 | 3連単 | 配当（人気） |")
+        out.append("|---|---|---|---|---|---|")
+        for x in d["当日結果"]:
+            if x["着順"]:
+                out.append(f"| {x['R']} | {'-'.join(map(str, x['着順'][:3]))} | {''.join(map(str, x['進入']))} | "
+                           f"{x['決まり手']} | {x['3連単']} | {x['3連単配当']}（{x['3連単人気']}） |")
+    else:
+        out.append("（このレースより前の結果はまだありません）")
     out.append("\n## 3連単オッズ 人気上位")
     out.append(" / ".join(f"{k} {v}" for k, v in d["人気上位"]) or "（まだ発売されていないか、取得できませんでした）")
     return "\n".join(out)
