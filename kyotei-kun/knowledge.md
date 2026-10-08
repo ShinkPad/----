@@ -327,4 +327,4 @@
 - [戸田 場の特徴（BOATRACE公式）](https://boatrace.jp/owpc/pc/site/place/stadium/br02/)
 - [大村 場の特徴（BOATRACE公式）](https://boatrace.jp/owpc/pc/site/place/stadium/br24/)
 
-※ モーター2連率の基準、気象の影響、資金管理はWebで個別に裏付けを取っていない一般的な知識です。
+※ 平均STの評価基準、モーター2連率の基準、気象の影響、資金管理はWebで個別に裏付けを取っていない一般的な知識です。
