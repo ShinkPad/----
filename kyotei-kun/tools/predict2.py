@@ -61,7 +61,7 @@ def features(d, hist, hd):
     boats = {b["枠"]: b for b in d["出走表"]["艇"]}
     bf = d["直前情報"]
     ex = {b["枠"]: num(b["展示"]) for b in bf["艇"]}
-    if any(np.isnan(v) for v in ex.values()):
+    if any(np.isnan(v) or not 6.0 <= v <= 8.0 for v in ex.values()):  # 展示前は列がずれてチルトが入ることがある
         ex = {k: 6.8 for k in boats}
     order = [s["枠"] for s in bf.get("スタート展示", [])]
     course = {b: (order.index(b) + 1 if b in order else b) for b in boats} if len(order) == 6 else {b: b for b in boats}
