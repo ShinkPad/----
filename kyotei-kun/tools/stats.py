@@ -115,8 +115,12 @@ def parse_b(text):
                               r"\s*(\d+\.\d\d)\s*(\d+\.\d\d)\s*(\d{1,3}?)\s*(\d{1,3}\.\d\d)", line)
                 if bm:
                     try:
+                        bt = re.match(r"\s*(\d{1,3}?)\s*(\d{1,3}\.\d\d)", line[bm.end():])
                         boats[int(bm.group(1))] = {"級別": bm.group(7), "全国勝率": float(bm.group(8)),
-                                                   "当地勝率": float(bm.group(10)), "モーター2率": float(bm.group(13))}
+                                                   "全国2率": float(bm.group(9)), "当地勝率": float(bm.group(10)),
+                                                   "当地2率": float(bm.group(11)), "モーター2率": float(bm.group(13)),
+                                                   "ボート2率": float(bt.group(2)) if bt else None,
+                                                   "年齢": int(bm.group(4)), "体重": int(bm.group(6)), "登番": bm.group(2)}
                     except ValueError:
                         pass
             out[(jcd, rno)] = {"締切": rm.group(3).translate(Z2H), "艇": boats}
@@ -147,7 +151,7 @@ def parse_k(text):
             for line in p.splitlines():
                 rm = re.match(r"\s+(\S\S)\s+([1-6])\s+(\d{4})\s.{8,12}?\s+(\d+)\s+(\d+)\s+([\d.]+|\s*)\s+([1-6]|\s)\s+([FL]?[\d.]+|[KLFS]\d?|\.)?", line)
                 if rm:
-                    rows.append({"着": rm.group(1), "艇": int(rm.group(2)), "展示": float(rm.group(6)) if rm.group(6).strip() else None,
+                    rows.append({"着": rm.group(1), "艇": int(rm.group(2)), "登番": rm.group(3), "展示": float(rm.group(6)) if rm.group(6).strip() else None,
                                  "進入": int(rm.group(7)) if rm.group(7).strip() else None,
                                  "ST": rm.group(8) or ""})
             pay = re.search(r"３連単\s+(\d-\d-\d)\s+(\d+)\s+人気\s+(\d+)", p)
