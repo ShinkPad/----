@@ -138,9 +138,10 @@ def race_rows(d, r, bo, hist):
     return out
 
 
-def build(start, end, cache):
+def build(start, end, cache, hist=None):
+    """start〜end の各レースの特徴量を作る。hist を渡すと、その続きから履歴を積み上げる（最後の hist も返す）"""
     days = [start + timedelta(n) for n in range((end - start).days + 1)]
-    hist = History()
+    hist = hist or History()
     data = []
     with ThreadPoolExecutor(8) as ex:
         for d, (races, prog) in zip(days, ex.map(lambda x: B.load(x, cache), days)):
@@ -154,6 +155,7 @@ def build(start, end, cache):
                                      "t2": r.get("2連単"), "p2": r.get("2連単配当"), "win": r.get("単勝"),
                                      "pw": r.get("単勝配当")})
                 hist.update(d, r["場"], r["艇"])
+    build.hist = hist
     return data
 
 
@@ -233,7 +235,14 @@ def main(argv):
         save = argv[i + 1]
         argv = argv[:i] + argv[i + 2:]
     cache = argv[0]
-    data = build(date(2023, 10, 1), date(2026, 9, 30), cache)
+    import pickle
+    pk = os.path.join(cache, "model2_data.pkl")
+    if os.path.exists(pk):
+        data, hist = pickle.load(open(pk, "rb"))
+    else:
+        data = build(date(2023, 10, 1), date(2026, 9, 30), cache)
+        hist = build.hist
+        pickle.dump((data, hist), open(pk, "wb"))
     tr = [r for r in data if r["date"] < date(2025, 10, 1)]
     va = [r for r in data if date(2025, 10, 1) <= r["date"] < date(2026, 4, 1)]
     te = [r for r in data if r["date"] >= date(2026, 4, 1)]
@@ -248,10 +257,10 @@ def main(argv):
     booster = lgb.train(params, dtr, 3000, valid_sets=[dva], callbacks=[lgb.early_stopping(100, verbose=False)])
     print(f"木の数 {booster.best_iteration}")
     Pva_raw = booster.predict(Xva, num_iteration=booster.best_iteration)
-    taus = [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]
+    taus = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]
     tau = min(taus, key=lambda t: logloss(race_probs(Pva_raw, t), va))
     Pva = race_probs(Pva_raw, tau)
-    gammas = [0.6, 0.7, 0.8, 0.9, 1.0]
+    gammas = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]
     gamma = min(gammas, key=lambda g: exacta_ll(Pva[:4000], va[:4000], g))
     print(f"τ={tau}, γ={gamma}")
     Pte = race_probs(booster.predict(Xte, num_iteration=booster.best_iteration), tau)
@@ -273,7 +282,9 @@ def main(argv):
     if save:
         booster.save_model(save, num_iteration=booster.best_iteration)
         with open(save + ".json", "w") as f:
-            json.dump({"tau": tau, "gamma": gamma, "features": FEATURES}, f)
+            json.dump({"tau": tau, "gamma": gamma, "features": FEATURES, "history_until": "2026-09-30"}, f)
+        import gzip
+        pickle.dump(hist, gzip.open(os.path.join(os.path.dirname(save), "model2_hist_base.pkl.gz"), "wb"))
 
 
 if __name__ == "__main__":
