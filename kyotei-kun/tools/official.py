@@ -14,9 +14,12 @@
 
 標準ライブラリだけで動く。
 """
+import hashlib
 import html
 import json
+import os
 import re
+import time
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -31,6 +34,29 @@ def fetch(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=30) as res:
         return res.read().decode("utf-8")
+
+
+PAGE_CACHE = os.path.join(os.environ.get("KYOTEI_CACHE", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                                     "..", "..", ".kyotei-cache")), "pages")
+# ページごとの使い回し時間（秒）。公式サイトは1ページ約10秒かかるので、official.py → predict2.py と続けて
+# 動かしたときに同じページを取り直さない。オッズ・直前情報は動くので短くする
+TTL = {"racersearch/course": 12 * 3600, "racelist": 3600, "raceresult": 600, "beforeinfo": 120, "odds": 120}
+
+
+def fetch_cached(url):
+    ttl = next((v for k, v in TTL.items() if k in url), 0)
+    path = os.path.join(PAGE_CACHE, hashlib.md5(url.encode()).hexdigest() + ".html")
+    if ttl and os.path.exists(path) and time.time() - os.path.getmtime(path) < ttl:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    page = fetch(url)
+    if ttl:
+        os.makedirs(PAGE_CACHE, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(page)
+        os.replace(tmp, path)
+    return page
 
 
 def tokens(fragment):
@@ -238,21 +264,24 @@ def parse_odds2t(page):
     return out
 
 
-def collect(jcd, rno, hd, odds_top=15):
+def collect(jcd, rno, hd, odds_top=15, light=False):
+    """light=True はモデル用：出走表・直前情報・オッズだけ取る（選手のコース別成績と当日の結果は取らない）"""
     q = f"rno={rno}&jcd={jcd:02d}&hd={hd}"
-    with ThreadPoolExecutor(4) as ex:
+    fetch = fetch_cached
+    with ThreadPoolExecutor(8) as ex:
         f_list = ex.submit(fetch, f"{BASE}/race/racelist?{q}")
         f_before = ex.submit(fetch, f"{BASE}/race/beforeinfo?{q}")
         f_odds = ex.submit(fetch, f"{BASE}/race/odds3t?{q}")
         f_odds2 = ex.submit(fetch, f"{BASE}/race/odds2tf?{q}")
         racelist = parse_racelist(f_list.result())
-        courses = {b["登番"]: ex.submit(fetch, f"{BASE}/data/racersearch/course?toban={b['登番']}")
-                   for b in racelist["艇"]}
+        courses = {} if light else {b["登番"]: ex.submit(fetch, f"{BASE}/data/racersearch/course?toban={b['登番']}")
+                                    for b in racelist["艇"]}
         before = parse_beforeinfo(f_before.result())
         odds = parse_odds3t(f_odds.result())
         odds2 = parse_odds2t(f_odds2.result())
         course = {k: parse_course(v.result()) for k, v in courses.items()}
-        earlier = [ex.submit(fetch, f"{BASE}/race/raceresult?rno={r}&jcd={jcd:02d}&hd={hd}") for r in range(1, rno)]
+        earlier = [] if light else [ex.submit(fetch, f"{BASE}/race/raceresult?rno={r}&jcd={jcd:02d}&hd={hd}")
+                                    for r in range(1, rno)]
         results = [dict(parse_result(f.result()), R=i + 1) for i, f in enumerate(earlier)]
     ranked = sorted(((k, float(v)) for k, v in odds.items() if re.fullmatch(r"[\d.]+", v)), key=lambda x: x[1])
     return {"場": PLACES[jcd - 1], "R": rno, "日付": hd, "出走表": racelist, "直前情報": before,

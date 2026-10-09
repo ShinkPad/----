@@ -102,7 +102,7 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
     meta = json.load(open(os.path.join(DATA, "model2.txt.json")))
     booster = lgb.Booster(model_file=os.path.join(DATA, "model2.txt"))
     hist = load_history(hd, cache)
-    d = O.collect(jcd, rno, hd, 200)
+    d = O.collect(jcd, rno, hd, 200, light=True)
     feats, cat = features(d, hist, hd)
     X = np.array([[feats[b][k] for k in M2.FEATURES] for b in range(1, 7)], dtype=float)
     p = M2.race_probs(booster.predict(X), meta["tau"])[0]
