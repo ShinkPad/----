@@ -42,7 +42,13 @@ def load_history(hd, cache):
     snap = os.path.join(cache, f"hist_{target:%Y%m%d}.pkl")
     if os.path.exists(snap):
         return pickle.load(open(snap, "rb"))
-    hist = pickle.load(open(os.path.join(cache, "model2_hist_base.pkl"), "rb"))
+    import gzip
+
+    class _U(pickle.Unpickler):
+        def find_class(self, module, name):  # model2.py を直接実行して保存した履歴も読めるようにする
+            return getattr(M2, name) if name == "History" else super().find_class(module, name)
+
+    hist = _U(gzip.open(os.path.join(DATA, "model2_hist_base.pkl.gz"), "rb")).load()
     if target > until:
         M2.build(until + timedelta(1), target, cache, hist)
     pickle.dump(hist, open(snap, "wb"))

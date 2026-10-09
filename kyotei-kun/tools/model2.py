@@ -283,7 +283,8 @@ def main(argv):
         booster.save_model(save, num_iteration=booster.best_iteration)
         with open(save + ".json", "w") as f:
             json.dump({"tau": tau, "gamma": gamma, "features": FEATURES, "history_until": "2026-09-30"}, f)
-        pickle.dump(hist, open(os.path.join(cache, "model2_hist_base.pkl"), "wb"))
+        import gzip
+        pickle.dump(hist, gzip.open(os.path.join(os.path.dirname(save), "model2_hist_base.pkl.gz"), "wb"))
 
 
 if __name__ == "__main__":
