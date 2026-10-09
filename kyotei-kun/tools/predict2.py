@@ -3,7 +3,7 @@
 
 1. 学習時点（2026-09-30）までの選手・モーターの履歴を読み込み、昨日までの公式データで履歴を最新にする
 2. official.py で当日の出走表・直前情報・オッズを取得し、v2 の特徴量を作る
-3. 各艇の1着確率 → 3連単・2連単の確率 → 期待値で「買い／見送り」を判定（predict.py と同じ基準）
+3. 各艇の1着確率 → 2・3着モデル（model3.py）で3連単・2連単の確率 → 期待値で「買い／見送り」を判定（predict.py と同じ基準）
 
 使い方: python3 predict2.py <場番号> <R> <YYYYMMDD> [--budget 円] [--cache キャッシュ]
 """
@@ -19,6 +19,7 @@ import lightgbm as lgb
 import numpy as np
 
 import model2 as M2
+import model3 as M3
 import official as O
 import predict as P
 import stats as S
@@ -105,7 +106,10 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
     feats, cat = features(d, hist, hd)
     X = np.array([[feats[b][k] for k in M2.FEATURES] for b in range(1, 7)], dtype=float)
     p = M2.race_probs(booster.predict(X), meta["tau"])[0]
-    t3 = M2.harville(p, meta["gamma"])
+    if os.path.exists(os.path.join(DATA, "model3.json")):  # 2・3着はコースの形を学習した着順モデルで出す
+        t3 = M3.Places().trifecta(feats, p)
+    else:
+        t3 = M2.harville(p, meta["gamma"])
     t2 = defaultdict(float)
     for k, v in t3.items():
         t2[k[:3]] += v
