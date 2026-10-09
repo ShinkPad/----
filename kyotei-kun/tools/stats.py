@@ -151,7 +151,7 @@ def parse_k(text):
             for line in p.splitlines():
                 rm = re.match(r"\s+(\S\S)\s+([1-6])\s+(\d{4})\s.{8,12}?\s+(\d+)\s+(\d+)\s+([\d.]+|\s*)\s+([1-6]|\s)\s+([FL]?[\d.]+|[KLFS]\d?|\.)?", line)
                 if rm:
-                    rows.append({"着": rm.group(1), "艇": int(rm.group(2)), "登番": rm.group(3), "展示": float(rm.group(6)) if rm.group(6).strip() else None,
+                    rows.append({"着": rm.group(1), "艇": int(rm.group(2)), "登番": rm.group(3), "モーター": int(rm.group(4)), "ボート": int(rm.group(5)), "展示": float(rm.group(6)) if rm.group(6).strip() else None,
                                  "進入": int(rm.group(7)) if rm.group(7).strip() else None,
                                  "ST": rm.group(8) or ""})
             pay = re.search(r"３連単\s+(\d-\d-\d)\s+(\d+)\s+人気\s+(\d+)", p)
