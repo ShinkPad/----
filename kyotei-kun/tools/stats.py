@@ -152,11 +152,16 @@ def parse_k(text):
                                  "ST": rm.group(8) or ""})
             pay = re.search(r"３連単\s+(\d-\d-\d)\s+(\d+)\s+人気\s+(\d+)", p)
             pay2 = re.search(r"２連単\s+(\d-\d)\s+(\d+)\s+人気\s+(\d+)", p)
+            payf = re.search(r"３連複\s+(\d-\d-\d)\s+(\d+)", p)
+            payw = re.search(r"単勝\s+(\d)\s+(\d+)", p)
             races.append({"場": jcd, "大会名": title, "R": int(hm.group(1)), "種別": hm.group(2), "天候": hm.group(4),
                           "風向": hm.group(5), "風速": int(hm.group(6)), "波高": int(hm.group(7)), "決まり手": km,
                           "艇": rows, "3連単": pay.group(1) if pay else None, "3連単配当": int(pay.group(2)) if pay else None,
                           "3連単人気": int(pay.group(3)) if pay else None,
-                          "2連単人気": int(pay2.group(3)) if pay2 else None})
+                          "2連単人気": int(pay2.group(3)) if pay2 else None,
+                          "2連単": pay2.group(1) if pay2 else None, "2連単配当": int(pay2.group(2)) if pay2 else None,
+                          "3連複": payf.group(1) if payf else None, "3連複配当": int(payf.group(2)) if payf else None,
+                          "単勝": int(payw.group(1)) if payw else None, "単勝配当": int(payw.group(2)) if payw else None})
     return races
 
 
