@@ -43,4 +43,4 @@ for r in rows:
     print(f"{O.PLACES[r['jcd'] - 1]} {r['R']}R {r['date']} 判定:{'買い' if r['go'] else '見送り'} 結果:{t3} 的中:{'○' if hit else '×'}")
 for go, (n, h, inv, pay) in agg.items():
     if n:
-        print(f"\\n【{'買い' if go else '見送り'}判定】{n}レース 的中{h} 回収率 {100 * pay / inv if inv else 0:.0f}%（見送りは「買っていたら」の数字）")
+        print(f"\n【{'買い' if go else '見送り'}判定】{n}レース 的中{h} 回収率 {100 * pay / inv if inv else 0:.0f}%（見送りは「買っていたら」の数字）")
