@@ -156,7 +156,8 @@ def parse_k(text):
                           "風向": hm.group(5), "風速": int(hm.group(6)), "波高": int(hm.group(7)), "決まり手": km,
                           "艇": rows, "3連単": pay.group(1) if pay else None, "3連単配当": int(pay.group(2)) if pay else None,
                           "3連単人気": int(pay.group(3)) if pay else None,
-                          "2連単人気": int(pay2.group(3)) if pay2 else None})
+                          "2連単人気": int(pay2.group(3)) if pay2 else None,
+                          "2連単": pay2.group(1) if pay2 else None, "2連単配当": int(pay2.group(2)) if pay2 else None})
     return races
 
 
