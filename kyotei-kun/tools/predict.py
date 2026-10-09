@@ -77,8 +77,9 @@ def verdict(p, t3, t2, odds3, odds2, budget=500):
     """期待値で「買う／見送る」を判定する。
 
     - モデル確率と市場確率を半々で混ぜた確率で期待値を計算（モデルの過信を防ぐ）
-    - 3連単：期待値1.2以上・確率2%以上、2連単：期待値1.1以上・確率5%以上を「買える目」とする
+    - 3連単：期待値1.1以上・確率2%以上、2連単：期待値1.1以上・確率5%以上を「買える目」とする（最大5点）
     - 買える目がない、または買える目の合計確率が10%未満なら「見送り」
+    - 線は 2026-04〜09 の1,739レースの最終オッズと実際の払戻で検証（knowledge.md 13-8）
     """
     m3, m2 = market_probs(odds3), market_probs(odds2)
     cands = []
@@ -86,7 +87,7 @@ def verdict(p, t3, t2, odds3, odds2, budget=500):
         if k in odds3 and k in m3:
             pb = 0.5 * pm + 0.5 * m3[k]
             ev = pb * odds3[k]
-            if ev >= 1.2 and pb >= 0.02:
+            if ev >= 1.1 and pb >= 0.02:
                 cands.append(("3連単", k, pb, odds3[k], ev))
     for k, pm in t2.items():
         if k in odds2 and k in m2:
@@ -95,12 +96,12 @@ def verdict(p, t3, t2, odds3, odds2, budget=500):
             if ev >= 1.1 and pb >= 0.05:
                 cands.append(("2連単", k, pb, odds2[k], ev))
     cands.sort(key=lambda x: -x[4])
-    cands = cands[: budget // 100]
+    cands = cands[: min(5, budget // 100)]
     hit = sum(c[2] for c in cands)
     top1 = float(max(p))
     reasons = []
     if not cands:
-        reasons.append("期待値が1.2を超える買い目がない（世間の評価とモデルが一致していて、配当が見合わない）")
+        reasons.append("期待値が1.1を超える買い目がない（世間の評価とモデルが一致していて、配当が見合わない）")
     elif hit < 0.10:
         reasons.append(f"買える目はあるが、合計の的中確率が{100 * hit:.0f}%と低い")
     if top1 < 0.35:
