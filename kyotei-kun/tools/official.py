@@ -42,6 +42,26 @@ def to_half(s):
     return s.translate(str.maketrans("０１２３４５６７８９", "0123456789"))
 
 
+def parse_kongetsu(body):
+    """今節成績の表（4行：レース番号・進入コース・ST・着順）をセル単位で読む。空き枠は飛ばす。"""
+    trs = re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S)
+    if len(trs) < 4:
+        return []
+    rows = [re.findall(r"<td([^>]*)>(.*?)</td>", tr, re.S) for tr in trs[:4]]
+    n = len(rows[1])
+    r1 = [c for c in rows[0] if "rowspan" not in c[0]][-n:]
+    clean = lambda v: html.unescape(re.sub(r"<[^>]+>|\s+", "", v)).replace("\xa0", "")
+    out = []
+    for i in range(n):
+        rno = clean(r1[i][1])
+        if not rno:
+            continue
+        waku = re.search(r"is-boatColor(\d)", r1[i][0])
+        out.append({"R": rno, "枠": waku.group(1) if waku else "-", "進入": clean(rows[1][i][1]) or "-",
+                    "ST": clean(rows[2][i][1]) or "-", "着": to_half(clean(rows[3][i][1])) or "-"})
+    return out
+
+
 def parse_racelist(page):
     title = re.search(r'<h3 class="title16_titleDetail__add2020">(.*?)</h3>', page, re.S)
     times = tokens(page[page.find("締切予定時刻"):page.find("締切予定時刻") + 1500])[1:13]
@@ -55,16 +75,7 @@ def parse_racelist(page):
              "当地勝率": t[12], "当地2連率": t[13], "当地3連率": t[14],
              "モーター": t[15], "モーター2連率": t[16], "モーター3連率": t[17],
              "ボート": t[18], "ボート2連率": t[19], "ボート3連率": t[20]}
-        rest = t[21:]
-        sts = [x for x in rest if re.fullmatch(r"[FL]?\.\d\d|[FL]\d?", x)]
-        n = len(sts)
-        first_st = rest.index(sts[0]) if sts else len(rest)
-        head = rest[:first_st]
-        k = len(head) // 2
-        finishes = [to_half(x) for x in rest[first_st + n:]]
-        b["今節"] = [{"R": head[i], "進入": head[k + i] if k + i < len(head) else "-",
-                      "ST": sts[i] if i < n else "-", "着": finishes[i] if i < len(finishes) else "-"}
-                     for i in range(k)]
+        b["今節"] = parse_kongetsu(body)
         boats.append(b)
     return {"タイトル": tokens(title.group(1)) if title else [], "締切時刻": times, "艇": boats}
 
@@ -214,23 +225,38 @@ def day_summary(results):
             "3連単平均配当": round(sum(pays) / len(pays)) if pays else "-"}
 
 
+def parse_odds2t(page):
+    """2連単オッズ（表の並び：列＝1着の艇、行＝2着の艇の昇順）"""
+    vals = re.findall(r'oddsPoint[^>]*>([\d.]+)<', page)[:30]
+    out = {}
+    if len(vals) < 30:
+        return out
+    for r in range(5):
+        for c in range(6):
+            second = [b for b in range(1, 7) if b != c + 1][r]
+            out[f"{c + 1}-{second}"] = vals[r * 6 + c]
+    return out
+
+
 def collect(jcd, rno, hd, odds_top=15):
     q = f"rno={rno}&jcd={jcd:02d}&hd={hd}"
     with ThreadPoolExecutor(4) as ex:
         f_list = ex.submit(fetch, f"{BASE}/race/racelist?{q}")
         f_before = ex.submit(fetch, f"{BASE}/race/beforeinfo?{q}")
         f_odds = ex.submit(fetch, f"{BASE}/race/odds3t?{q}")
+        f_odds2 = ex.submit(fetch, f"{BASE}/race/odds2tf?{q}")
         racelist = parse_racelist(f_list.result())
         courses = {b["登番"]: ex.submit(fetch, f"{BASE}/data/racersearch/course?toban={b['登番']}")
                    for b in racelist["艇"]}
         before = parse_beforeinfo(f_before.result())
         odds = parse_odds3t(f_odds.result())
+        odds2 = parse_odds2t(f_odds2.result())
         course = {k: parse_course(v.result()) for k, v in courses.items()}
         earlier = [ex.submit(fetch, f"{BASE}/race/raceresult?rno={r}&jcd={jcd:02d}&hd={hd}") for r in range(1, rno)]
         results = [dict(parse_result(f.result()), R=i + 1) for i, f in enumerate(earlier)]
     ranked = sorted(((k, float(v)) for k, v in odds.items() if re.fullmatch(r"[\d.]+", v)), key=lambda x: x[1])
     return {"場": PLACES[jcd - 1], "R": rno, "日付": hd, "出走表": racelist, "直前情報": before,
-            "コース別成績": course, "3連単オッズ": odds, "人気上位": ranked[:odds_top],
+            "コース別成績": course, "3連単オッズ": odds, "人気上位": ranked[:odds_top], "2連単オッズ": odds2,
             "当日結果": results, "当日傾向": day_summary(results)}
 
 
@@ -247,9 +273,9 @@ def render(d):
         out.append(f"| {b['枠']} | {b['選手']} | {b['級別']} | {b['F']}/{b['L']} | {b['平均ST']} | "
                    f"{b['全国勝率']}/{b['全国2連率']} | {b['当地勝率']}/{b['当地2連率']} | "
                    f"{b['モーター']}/{b['モーター2連率']} | {b['ボート']}/{b['ボート2連率']} |")
-    out.append("\n## 今節成績（R:進入→着順 ST）")
+    out.append("\n## 今節成績（古い順）")
     for b in rl["艇"]:
-        s = "、".join(f"{x['R']}:{x['進入']}→{x['着']}({x['ST']})" for x in b["今節"]) or "-"
+        s = "、".join(f"{x['R']}R {x['進入']}コース→{x['着']}着(ST{x['ST']})" for x in b["今節"]) or "-"
         out.append(f"- {b['枠']} {b['選手']}：{s}")
     out.append("\n## 枠のコースでの成績（選手ページ、直近の集計）")
     out.append("| 枠 | 選手 | このコースの進入率 | 1着率 | 2着率 | 3着率 | 3連対率 | コース別平均ST |")
@@ -293,6 +319,9 @@ def render(d):
                            f"{x['決まり手']} | {x['3連単']} | {x['3連単配当']}（{x['3連単人気']}） |")
     else:
         out.append("（このレースより前の結果はまだありません）")
+    o2 = sorted(((k, float(v)) for k, v in d.get("2連単オッズ", {}).items() if v), key=lambda x: x[1])
+    out.append("\n## 2連単オッズ 人気上位")
+    out.append(" / ".join(f"{k} {v}" for k, v in o2[:10]) or "（取得できませんでした）")
     out.append("\n## 3連単オッズ 人気上位")
     out.append(" / ".join(f"{k} {v}" for k, v in d["人気上位"]) or "（まだ発売されていないか、取得できませんでした）")
     return "\n".join(out)
