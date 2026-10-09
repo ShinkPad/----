@@ -188,7 +188,27 @@ def day_summary(results):
     for x in done:
         kimarite[x["決まり手"]] = kimarite.get(x["決まり手"], 0) + 1
     pays = [int(re.sub(r"[^\d]", "", x["3連単配当"])) for x in done if re.search(r"\d", x["3連単配当"])]
-    return {"レース数": n, "1コース1着": win_course.count(1),
+    # コース別の1着・2着・3着の回数（進入コースで数える）
+    by_course = {c: [0, 0, 0] for c in range(1, 7)}
+    for x in done:
+        for pos, b in enumerate(x["着順"][:3]):
+            if b in x["進入"]:
+                by_course[x["進入"].index(b) + 1][pos] += 1
+    # 直近3レースの1着コース
+    recent = [c for c in win_course[-3:]]
+    alerts = []
+    for c in range(2, 7):
+        if by_course[c][0] >= 2:
+            alerts.append(f"{c}コースの1着が{by_course[c][0]}回（{n}レース中）→ {c}号艇の1着を必ず押さえる")
+    if n >= 4 and by_course[1][0] / n < 0.4:
+        alerts.append(f"1コースの1着が{by_course[1][0]}/{n}回と少ない → 1号艇の1着固定は避ける（2連複・表裏も検討）")
+    if n >= 4 and by_course[1][0] / n >= 0.7:
+        alerts.append(f"1コースの1着が{by_course[1][0]}/{n}回と多い → 1号艇の1着を信頼してよい")
+    hot3 = [c for c in range(1, 7) if sum(by_course[c]) >= max(3, n * 0.6)]
+    if hot3:
+        alerts.append("3着以内によく来るコース：" + "・".join(f"{c}コース（{sum(by_course[c])}回）" for c in hot3))
+    return {"レース数": n, "1コース1着": win_course.count(1), "コース別着数": by_course,
+            "直近の1着コース": recent, "流れアラート": alerts,
             "枠なり以外": sum(1 for x in done if x["進入"] and x["進入"] != sorted(x["進入"])),
             "決まり手": kimarite, "万舟": sum(1 for p in pays if p >= 10000),
             "3連単平均配当": round(sum(pays) / len(pays)) if pays else "-"}
@@ -259,6 +279,12 @@ def render(d):
         out.append(f"- {sm['レース数']}レース中、1コース1着 **{sm['1コース1着']}回**、枠なり以外の進入 {sm['枠なり以外']}回、"
                    f"万舟 {sm['万舟']}回、3連単平均配当 {sm['3連単平均配当']}円")
         out.append(f"- 決まり手：{km}")
+        out.append("- コース別の着数（1着/2着/3着）：" + "、".join(
+            f"{c}C {v[0]}/{v[1]}/{v[2]}" for c, v in sm["コース別着数"].items()))
+        out.append(f"- 直近3レースの1着コース：{sm['直近の1着コース']}")
+        if sm["流れアラート"]:
+            out.append("\n### ⚠️ 当日の流れアラート（予想に必ず反映する）")
+            out.extend(f"- {a}" for a in sm["流れアラート"])
         out.append("\n| R | 着順（枠） | 進入（内から枠） | 決まり手 | 3連単 | 配当（人気） |")
         out.append("|---|---|---|---|---|---|")
         for x in d["当日結果"]:
