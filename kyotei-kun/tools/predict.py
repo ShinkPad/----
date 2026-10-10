@@ -110,12 +110,34 @@ def verdict(p, t3, t2, odds3, odds2, budget=500):
     return go, cands, hit, reasons
 
 
-def log_prediction(jcd, rno, hd, p, cands, go):
+def safe_verdict(p, t2, odds2, budget=500):
+    """硬いモード：当たりやすい2連単を1〜2点だけ買う（knowledge.md 13-13）
+
+    - 2連単でモデルの確率が上位2点まで
+    - その目の確率（モデルと市場の平均）が20%以上、期待値0.9以上
+    - 1着本命の確率が60%以上
+    検証（2026-04〜09・1,739レース・最終オッズ）：対象は約11%のレース、的中率32%、回収率118%（4〜6月122%・7〜9月113%）
+    """
+    if float(max(p)) < 0.6:
+        return []
+    m2 = market_probs(odds2)
+    out = []
+    for k in sorted(t2, key=t2.get, reverse=True)[:2]:
+        if k in odds2 and k in m2:
+            pb = 0.5 * t2[k] + 0.5 * m2[k]
+            if pb >= 0.2 and pb * odds2[k] >= 0.9:
+                out.append(("2連単", k, pb, odds2[k], pb * odds2[k]))
+    return out
+
+
+def log_prediction(jcd, rno, hd, p, cands, go, safe=None):
     here = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(here, "..", "data", "predictions.jsonl")
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps({"jcd": jcd, "R": rno, "date": hd, "p": [round(float(x), 4) for x in p], "go": bool(go),
-                            "bets": [{"type": c[0], "key": c[1], "prob": round(float(c[2]), 4), "odds": float(c[3])} for c in cands]},
+                            "bets": [{"type": c[0], "key": c[1], "prob": round(float(c[2]), 4), "odds": float(c[3])} for c in cands],
+                            "safe": [{"type": c[0], "key": c[1], "prob": round(float(c[2]), 4), "odds": float(c[3])}
+                                     for c in (safe or [])]},
                            ensure_ascii=False) + "\n")
 
 

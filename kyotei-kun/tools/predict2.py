@@ -178,6 +178,7 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
     for k in sorted(t3, key=t3.get, reverse=True)[:10]:
         o = odds3.get(k)
         out.append(f"| {k} | {100 * t3[k]:.1f}% | {o or '-'} | {(t3[k] * o):.2f} |" if o else f"| {k} | {100 * t3[k]:.1f}% | - | - |")
+    safe = P.safe_verdict(p, t2, odds2, budget)
     go, cands, hit, reasons = P.verdict(p, t3, t2, odds3, odds2, budget)
     out += ["", f"## 判定：{'✅ 買い' if go else '⛔ 見送り推奨'}（予算{budget}円）"]
     out += [f"- {r}" for r in reasons]
@@ -185,9 +186,16 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
         out += ["", "| 券種 | 買い目 | 確率（モデルと市場の平均） | オッズ | 期待値 |", "|---|---|---|---|---|"]
         out += [f"| {c[0]} | {c[1]} | {100 * c[2]:.1f}% | {c[3]} | {c[4]:.2f} |" for c in cands]
         out.append(f"\n- 合計の的中確率：約{100 * hit:.0f}%（各100円）")
+    out += ["", f"## 硬いモード：{'✅ 買い' if safe else '⛔ 対象外'}（当たりやすい2連単を1〜2点だけ）"]
+    if safe:
+        out += ["| 券種 | 買い目 | 確率（モデルと市場の平均） | オッズ | 期待値 |", "|---|---|---|---|---|"]
+        out += [f"| {c[0]} | {c[1]} | {100 * c[2]:.1f}% | {c[3]} | {c[4]:.2f} |" for c in safe]
+        out.append(f"- 合計の的中確率：約{100 * sum(c[2] for c in safe):.0f}%（過去の検証：的中率32%・回収率118%）")
+    else:
+        out.append("- 条件（2連単の上位2点・確率20%以上・期待値0.9以上・本命60%以上）を満たす目がない")
     out.append("\n※ 当日のこれより前のレース結果は、v2 の履歴（今節の調子など）にはまだ入っていない")
     if log:
-        P.log_prediction(jcd, rno, hd, p, cands, go)
+        P.log_prediction(jcd, rno, hd, p, cands, go, safe)
     return "\n".join(out), p, t3
 
 

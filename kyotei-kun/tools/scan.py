@@ -67,29 +67,32 @@ def main(argv):
         return x, (txt, p), None
 
     print(f"# {now:%H:%M} 時点：締切まで{opt['--from']}〜{opt['--to']}分のレース {len(races)}件\n")
-    print("| 締切 | 場 | R | 判定 | 本命（1着確率） | 買い目 |")
-    print("|---|---|---|---|---|---|")
+    print("| 締切 | 場 | R | 判定 | 本命（1着確率） | 買い目 | 硬いモード |")
+    print("|---|---|---|---|---|---|---|")
     buys = []
     with ThreadPoolExecutor(3) as ex:
         for (dl, j, r, t), res, err in ex.map(run, races):
             name = O.PLACES[j - 1]
             if err:
-                print(f"| {t} | {name} | {r} | 取得できず | - | - |")
+                print(f"| {t} | {name} | {r} | 取得できず | - | - | - |")
                 continue
             txt, p = res
             if "展示なし" in txt:
-                print(f"| {t} | {name} | {r} | 展示待ち | - | - |")
+                print(f"| {t} | {name} | {r} | 展示待ち | - | - | - |")
                 continue
-            v = txt.split("## 判定")[1]
+            v, sv = txt.split("## 判定")[1].split("## 硬いモード")
             go = "✅" in v[:10]
-            bets = re.findall(r"\| (3連単|2連単) \| (\d-\d(?:-\d)?) \| ([\d.]+)% \| ([\d.]+) \| ([\d.]+) \|", v)
+            pat = r"\| (3連単|2連単) \| (\d-\d(?:-\d)?) \| ([\d.]+)% \| ([\d.]+) \| ([\d.]+) \|"
+            bets = re.findall(pat, v)
+            safe = [(a, b, float(c) / 100, float(d), float(e)) for a, b, c, d, e in re.findall(pat, sv)]
             fav = int(p.argmax()) + 1
             print(f"| {t} | {name} | {r} | {'✅ 買い' if go else '⛔ 見送り'} | {fav}（{100 * p.max():.0f}%） | "
-                  f"{' '.join(f'{a}{b}' for a, b, *_ in bets) if go else '-'} |")
+                  f"{' '.join(f'{a}{b}' for a, b, *_ in bets) if go else '-'} | "
+                  f"{' '.join(f'{a}{b}' for a, b, *_ in safe) if safe else '-'} |")
             if (j, r, hd) not in done:
                 cands = [(a, b, float(c) / 100, float(d), float(e)) for a, b, c, d, e in bets]
-                P.log_prediction(j, r, hd, p, cands if go else [], go)
-            if go:
+                P.log_prediction(j, r, hd, p, cands if go else [], go, safe)
+            if go or safe:
                 buys.append((t, name, r, txt))
     for t, name, r, txt in buys:
         print(f"\n---\n\n## {t} {name} {r}R\n")

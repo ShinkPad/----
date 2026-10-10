@@ -22,6 +22,7 @@ for line in open(path, encoding="utf-8"):
     rows.append(r)  # 同じレースは最後の予想を使う
 
 agg = {True: [0, 0, 0, 0], False: [0, 0, 0, 0]}
+agg_safe = [0, 0, 0, 0]  # 硬いモード：レース数・的中・購入・払戻
 for r in rows:
     res = O.parse_result(O.fetch(f"{O.BASE}/race/raceresult?rno={r['R']}&jcd={r['jcd']:02d}&hd={r['date']}"))
     if res["3連単"] == "-":
@@ -40,7 +41,22 @@ for r in rows:
             a[3] += round(b["odds"] * 100)  # 2連単は記録時のオッズで概算
             hit = True
     a[1] += hit
-    print(f"{O.PLACES[r['jcd'] - 1]} {r['R']}R {r['date']} 判定:{'買い' if r['go'] else '見送り'} 結果:{t3} 的中:{'○' if hit else '×'}")
+    sh = None
+    if r.get("safe"):
+        sa = agg_safe
+        sa[0] += 1
+        sh = False
+        for b in r["safe"]:
+            sa[2] += 100
+            if b["key"] == t3[:3]:
+                sa[3] += round(b["odds"] * 100)
+                sh = True
+        sa[1] += sh
+    print(f"{O.PLACES[r['jcd'] - 1]} {r['R']}R {r['date']} 判定:{'買い' if r['go'] else '見送り'} 結果:{t3} 的中:{'○' if hit else '×'}"
+          + ("" if sh is None else f" 硬いモード:{'○' if sh else '×'}"))
 for go, (n, h, inv, pay) in agg.items():
     if n:
         print(f"\n【{'買い' if go else '見送り'}判定】{n}レース 的中{h} 回収率 {100 * pay / inv if inv else 0:.0f}%（見送りは「買っていたら」の数字）")
+n, h, inv, pay = agg_safe
+if n:
+    print(f"\n【硬いモード】{n}レース 的中{h}（{100 * h / n:.0f}%） 回収率 {100 * pay / inv:.0f}%（2連単は記録時のオッズで概算）")
