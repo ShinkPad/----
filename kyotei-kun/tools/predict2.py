@@ -100,6 +100,41 @@ def features(d, hist, hd):
     return out, cat
 
 
+def racer_notes(d, top3, odds3):
+    """選手の特徴と注意点（今節の調子・走り方のタイプ・スタート・モデルと世間の評価の差）"""
+    styles = json.load(open(os.path.join(DATA, "racer_style.json")))["racers"]
+    market = defaultdict(float)
+    for k, v in P.market_probs(odds3).items():
+        for b in k.split("-"):
+            market[int(b)] += v
+    boats = d["出走表"]["艇"]
+    nat_rank = {b["枠"]: i + 1 for i, b in enumerate(sorted(boats, key=lambda b: -num(b["全国勝率"], 0)))}
+    out = ["", "## 選手の特徴と注意点",
+           "| 枠 | 選手 | 級・勝率（順位） | 今節（着順） | 走り方 | 平均ST | 3着以内：モデル／世間 |", "|---|---|---|---|---|---|---|"]
+    warns = []
+    for b in boats:
+        w = b["枠"]
+        res = [x["着"] for x in b.get("今節", []) if re.fullmatch(r"[1-6]", str(x.get("着", "")))]
+        form = "-" if not res else f"{'・'.join(res)}（平均{sum(map(int, res)) / len(res):.1f}）"
+        sty = styles.get(b["登番"], {})
+        typ = sty.get("type", "-")
+        diff = top3[w] - market[w]
+        out.append(f"| {w} | {b['選手']} | {b['級別']}・{b['全国勝率']}（{nat_rank[w]}位） | {form} | {typ} | "
+                   f"{b.get('平均ST') or '-'}{'・' + b['F/L'] if b.get('F/L') and 'F0' not in str(b['F/L']) else ''} | "
+                   f"{100 * top3[w]:.0f}%／{100 * market[w]:.0f}% |")
+        if len(res) >= 3 and sum(map(int, res)) / len(res) >= 4.5:
+            warns.append(f"{w}号艇 {b['選手']}：今節{len(res)}走の平均着順{sum(map(int, res)) / len(res):.1f}と不調")
+        if len(res) >= 3 and sum(map(int, res)) / len(res) <= 2.3:
+            warns.append(f"{w}号艇 {b['選手']}：今節{len(res)}走の平均着順{sum(map(int, res)) / len(res):.1f}と好調")
+        if diff > 0.15:
+            warns.append(f"{w}号艇 {b['選手']}：モデルは3着以内{100 * top3[w]:.0f}%、世間は{100 * market[w]:.0f}%。"
+                         "モデルが高く見すぎていないか、今節の調子・直前情報で確かめる")
+        elif diff < -0.15:
+            warns.append(f"{w}号艇 {b['選手']}：世間の評価（{100 * market[w]:.0f}%）がモデル（{100 * top3[w]:.0f}%）よりかなり高い")
+    out += [f"- ⚠️ {x}" for x in warns]
+    return out
+
+
 def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
     meta = json.load(open(os.path.join(DATA, "model2.txt.json")))
     booster = lgb.Booster(model_file=os.path.join(DATA, "model2.txt"))
@@ -134,6 +169,7 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
         fmt = lambda v, n=1: "-" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{v:.{n}f}"
         out.append(f"| {i + 1} | {names[i + 1]} | {100 * p[i]:.1f}% | {100 * top3[i + 1]:.1f}% | "
                    f"{100 * f['rc_win']:.0f}%（{f['rc_n']}走） | {fmt(f['motor_pts'])} | {fmt(f['form_pts'])} |")
+    out += racer_notes(d, top3, odds3)
     out += ["", "## 2連単（確率順）", "| 買い目 | 確率 | オッズ | 期待値 |", "|---|---|---|---|"]
     for k in sorted(t2, key=t2.get, reverse=True)[:8]:
         o = odds2.get(k)
