@@ -73,8 +73,10 @@ def features(d, hist, hd):
     cat = S.race_category(" ".join(d["出走表"]["タイトル"]))
     w = bf["気象"]
     code = int(num(w.get("風向コード"), 17))
-    wind_dir = code if 1 <= code <= 16 else 0
     jcd = S.PLACES.index(d["場"]) + 1
+    # 公式ページの風向コードはその場のコースに対する向き。学習データ（方角）に合わせて場ごとのずれを戻す
+    off = json.load(open(os.path.join(DATA, "wind_offset.json")))[str(jcd)]
+    wind_dir = (code - off - 1) % 16 + 1 if 1 <= code <= 16 else 0
     out = {}
     for b in range(1, 7):
         x = boats[b]
