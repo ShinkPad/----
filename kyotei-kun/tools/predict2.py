@@ -104,6 +104,7 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
     hist = load_history(hd, cache)
     d = O.collect(jcd, rno, hd, 200, light=True)
     feats, cat = features(d, hist, hd)
+    ex_ok = all(6.0 <= num(b["展示"]) <= 8.0 for b in d["直前情報"]["艇"])
     X = np.array([[feats[b][k] for k in M2.FEATURES] for b in range(1, 7)], dtype=float)
     p = M2.race_probs(booster.predict(X), meta["tau"])[0]
     if os.path.exists(os.path.join(DATA, "model3.json")):  # 2・3着はコースの形を学習した着順モデルで出す
@@ -120,7 +121,10 @@ def predict(jcd, rno, hd, budget=500, cache=DEFAULT_CACHE, log=True):
     for k, v in t3.items():
         for b in k.split("-"):
             top3[int(b)] += v
-    out = [f"# {d['場']} {rno}R ボート基盤モデル v2（{cat}）", "",
+    out = [f"# {d['場']} {rno}R ボート基盤モデル v2（{cat}）", ""]
+    if not ex_ok:
+        out += ["⚠️ 展示なし（展示タイムがまだ出ていないので、展示を平均として計算。展示が出てから出し直す）", ""]
+    out += [
            "| 枠 | 選手 | 1着確率 | 3着以内確率 | そのコースの過去1年1着率 | モーターの最近の平均着点 | 今節の平均着点 |",
            "|---|---|---|---|---|---|---|"]
     for i in range(6):
