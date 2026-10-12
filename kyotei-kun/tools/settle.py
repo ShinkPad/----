@@ -22,6 +22,20 @@ for line in open(path, encoding="utf-8"):
     rows.append(r)  # 同じレースは最後の予想を使う
 
 agg = {True: [0, 0, 0, 0], False: [0, 0, 0, 0]}
+
+
+def pay2(r, b):
+    """2連単の払戻：公式の確定データ（翌日以降）があればそれを使い、なければ記録時のオッズで概算"""
+    try:
+        import backtest as B
+        from datetime import datetime
+        k = {(x["場"], x["R"]): x for x in B.load(datetime.strptime(r["date"], "%Y%m%d").date(),
+                                                os.path.join(here, "..", "..", ".kyotei-cache"))[0]}.get((r["jcd"], r["R"]))
+        if k and k.get("2連単配当"):
+            return k["2連単配当"]
+    except Exception:
+        pass
+    return round(b["odds"] * 100)
 for r in rows:
     res = O.parse_result(O.fetch(f"{O.BASE}/race/raceresult?rno={r['R']}&jcd={r['jcd']:02d}&hd={r['date']}"))
     if res["3連単"] == "-":
@@ -37,7 +51,7 @@ for r in rows:
             a[3] += pay3
             hit = True
         if b["type"] == "2連単" and b["key"] == t3[:3]:
-            a[3] += round(b["odds"] * 100)  # 2連単は記録時のオッズで概算
+            a[3] += pay2(r, b)
             hit = True
     a[1] += hit
     print(f"{O.PLACES[r['jcd'] - 1]} {r['R']}R {r['date']} 判定:{'買い' if r['go'] else '見送り'} 結果:{t3} 的中:{'○' if hit else '×'}")
